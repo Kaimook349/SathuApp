@@ -60,11 +60,32 @@ export default function NewActivityPage() {
 
     setLoading(true);
     try {
+      // 1. ตรวจสอบผู้ใช้ที่ล็อกอินและดึง temple_id อัตโนมัติ
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData?.user) {
+        alert("กรุณาล็อกอินใหม่");
+        setLoading(false);
+        return;
+      }
+
+      const { data: temple } = await supabase
+        .from("temple_registrations")
+        .select("id")
+        .eq("user_id", authData.user.id)
+        .maybeSingle();
+
+      if (!temple) {
+        alert("ไม่พบข้อมูลวัดของคุณ กรุณาลงทะเบียนวัดก่อน");
+        setLoading(false);
+        return;
+      }
+
       let imageUrl = "https://images.unsplash.com/photo-1544816155-12df9643f363";
       if (imageFile) {
         imageUrl = await uploadImageToSupabase(imageFile);
       }
 
+      // 2. บันทึกข้อมูลพร้อมแนบ temple_id ของวัดตัวเอง
       const { error } = await supabase.from("admin_activities").insert([
         {
           title,
@@ -75,6 +96,7 @@ export default function NewActivityPage() {
           image: imageUrl,
           status: "published",
           completeness: 100,
+          temple_id: temple.id, // 👈 ผูกรหัสวัดให้อัตโนมัติ
         },
       ]);
 
@@ -93,11 +115,32 @@ export default function NewActivityPage() {
   const handleSaveDraft = async () => {
     setLoading(true);
     try {
+      // 1. ตรวจสอบผู้ใช้ที่ล็อกอินและดึง temple_id อัตโนมัติ
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData?.user) {
+        alert("กรุณาล็อกอินใหม่");
+        setLoading(false);
+        return;
+      }
+
+      const { data: temple } = await supabase
+        .from("temple_registrations")
+        .select("id")
+        .eq("user_id", authData.user.id)
+        .maybeSingle();
+
+      if (!temple) {
+        alert("ไม่พบข้อมูลวัดของคุณ กรุณาลงทะเบียนวัดก่อน");
+        setLoading(false);
+        return;
+      }
+
       let imageUrl = imagePreview;
       if (imageFile) {
         imageUrl = await uploadImageToSupabase(imageFile);
       }
 
+      // 2. บันทึกแบบร่างพร้อมแนบ temple_id ของวัดตัวเอง
       const { error } = await supabase.from("admin_activities").insert([
         {
           title: title || "กิจกรรมยังไม่ตั้งชื่อ",
@@ -108,6 +151,7 @@ export default function NewActivityPage() {
           image: imageUrl,
           status: "draft",
           completeness: date && imageUrl && title ? 100 : 70,
+          temple_id: temple.id, // 👈 ผูกรหัสวัดให้อัตโนมัติ
         },
       ]);
 

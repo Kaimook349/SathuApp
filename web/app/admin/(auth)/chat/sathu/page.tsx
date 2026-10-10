@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, MessageSquare } from "lucide-react";
+import { ArrowLeft, ArrowUp, MessageSquare, ImagePlus, Check, CheckCheck } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
+import Image from "next/image";
 
 interface TempleInfo {
   id: string;
@@ -16,6 +17,7 @@ interface ChatMessage {
   temple_id: string;
   sender_type: "sathu" | "temple";
   message: string;
+  image_url?: string;
   created_at: string;
   is_read?: boolean;
 }
@@ -38,6 +40,7 @@ export default function SathuChatRoomPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -97,6 +100,7 @@ export default function SathuChatRoomPage() {
         scrollToBottom(false);
       }
 
+      // ทำเครื่องหมายว่าข้อความจาก sathu ถูกอ่านแล้ว
       await supabase
         .from("temple_chats")
         .update({ is_read: true })
@@ -111,13 +115,21 @@ export default function SathuChatRoomPage() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "temple_chats", filter: `temple_id=eq.${myTemple.id}` },
-        (payload) => {
+        async (payload) => {
           const incoming = payload.new as ChatMessage;
           setMessages((prev) => (prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]));
           scrollToBottom();
           if (incoming.sender_type === "sathu") {
-            supabase.from("temple_chats").update({ is_read: true }).eq("id", incoming.id).then();
+            await supabase.from("temple_chats").update({ is_read: true }).eq("id", incoming.id);
           }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "temple_chats", filter: `temple_id=eq.${myTemple.id}` },
+        (payload) => {
+          const updated = payload.new as ChatMessage;
+          setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
         }
       )
       .subscribe();
@@ -128,22 +140,53 @@ export default function SathuChatRoomPage() {
     };
   }, [myTemple, scrollToBottom]);
 
-  const handleSend = async () => {
+  const handleSend = async (customImgUrl?: string) => {
     const text = draft.trim();
-    if (!text || !myTemple || sending) return;
+    if ((!text && !customImgUrl) || !myTemple || sending) return;
 
     setSending(true);
     setDraft("");
 
     const { error } = await supabase
       .from("temple_chats")
-      .insert([{ temple_id: myTemple.id, sender_type: "temple", message: text }]);
+      .insert([{ 
+        temple_id: myTemple.id, 
+        sender_type: "temple", 
+        message: text || (customImgUrl ? "ส่งรูปภาพ" : ""),
+        image_url: customImgUrl || null,
+        is_read: false 
+      }]);
 
     setSending(false);
 
     if (error) {
       alert("ส่งข้อความไม่สำเร็จ: " + error.message);
       setDraft(text);
+    }
+  };
+
+  const handleSendImageInChat = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !myTemple) return;
+
+    setUploadingImage(true);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `chat_temple_${Math.random()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from("activity-images")
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("activity-images").getPublicUrl(fileName);
+      if (data?.publicUrl) {
+        await handleSend(data.publicUrl);
+      }
+    } catch (err: any) {
+      alert("อัปโหลดรูปภาพไม่สำเร็จ: " + err.message);
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -154,6 +197,8 @@ export default function SathuChatRoomPage() {
     if (lastGroup && lastGroup.label === label) lastGroup.items.push(m);
     else groupedByDay.push({ label, items: [m] });
   }
+
+  const lastMineIndex = messages.map((m) => m.sender_type === "temple").lastIndexOf(true);
 
   return (
     <div className="flex h-full w-full flex-col bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100">
@@ -210,17 +255,40 @@ export default function SathuChatRoomPage() {
                 </div>
                 {group.items.map((m) => {
                   const isMine = m.sender_type === "temple";
+                  const isLastMine = messages.indexOf(m) === lastMineIndex;
+
                   return (
-                    <div key={m.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                      <div
-                        className={`max-w-[75%] break-words rounded-2xl px-4 py-2.5 text-xs sm:text-sm leading-relaxed shadow-2xs ${
-                          isMine
-                            ? "bg-purple-700 text-white rounded-br-xs"
-                            : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/60 dark:border-slate-700 rounded-bl-xs"
-                        }`}
-                      >
-                        {m.message}
-                      </div>
+                    <div key={m.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+                      {m.image_url ? (
+                        <div className="relative aspect-video w-48 sm:w-60 rounded-2xl overflow-hidden shadow-md bg-black/5 border border-slate-200/50">
+                          <Image src={m.image_url} alt="Chat Image" fill className="object-cover" />
+                        </div>
+                      ) : (
+                        <div
+                          className={`max-w-[75%] rounded-3xl p-3.5 text-xs shadow-xs ${
+                            isMine
+                              ? "bg-gradient-to-tr from-purple-600 via-pink-600 to-amber-500 text-white rounded-br-xs font-medium"
+                              : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/60 dark:border-slate-700 rounded-bl-xs font-medium"
+                          }`}
+                        >
+                          <p className="leading-relaxed">{m.message}</p>
+                        </div>
+                      )}
+
+                      {/* สถานะ ส่งแล้ว / อ่านแล้ว สไตล์ IG */}
+                      {isMine && isLastMine && (
+                        <div className="flex items-center gap-1 mt-1 mr-1 text-[10px] text-slate-400 font-bold">
+                          {m.is_read ? (
+                            <span className="flex items-center gap-0.5 text-purple-600 dark:text-purple-400">
+                              <CheckCheck size={13} /> อ่านแล้ว
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-0.5">
+                              <Check size={13} /> ส่งแล้ว
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -230,10 +298,15 @@ export default function SathuChatRoomPage() {
         )}
       </div>
 
-      {/* ─── แถบพิมพ์ข้อความ ─── */}
+      {/* ─── แถบพิมพ์ข้อความ & ส่งรูป ─── */}
       <div className="shrink-0 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex flex-1 items-center rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-2">
+          <label className="cursor-pointer p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition shrink-0">
+            <ImagePlus size={20} />
+            <input type="file" accept="image/*" onChange={handleSendImageInChat} className="hidden" />
+          </label>
+
+          <div className="flex flex-1 items-center gap-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-2.5 shadow-2xs">
             <input
               type="text"
               value={draft}
@@ -244,15 +317,16 @@ export default function SathuChatRoomPage() {
                   handleSend();
                 }
               }}
-              disabled={!myTemple}
-              placeholder="พิมพ์ข้อความถึงทีมงานสาธุ..."
-              className="w-full bg-transparent text-xs sm:text-sm text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400"
+              disabled={!myTemple || uploadingImage}
+              placeholder={uploadingImage ? "กำลังอัปโหลดรูปภาพ..." : "พิมพ์ข้อความถึงทีมงานสาธุ..."}
+              className="w-full bg-transparent text-xs sm:text-sm text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400 font-medium"
             />
           </div>
+
           <button
-            onClick={handleSend}
-            disabled={sending || !draft.trim()}
-            className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-2xl bg-purple-700 hover:bg-purple-600 text-white disabled:opacity-40 transition shadow-sm"
+            onClick={() => handleSend()}
+            disabled={sending || (!draft.trim() && !uploadingImage) || !myTemple}
+            className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-95 text-white disabled:opacity-40 transition shadow-sm"
           >
             <ArrowUp size={18} />
           </button>

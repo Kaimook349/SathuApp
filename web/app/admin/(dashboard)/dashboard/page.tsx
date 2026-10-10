@@ -49,6 +49,7 @@ export default function AdminDashboardPage() {
   const [checking, setChecking] = useState(true);
   const [templeName, setTempleName] = useState("วัดในระบบ Sathu");
   const [adminName, setAdminName] = useState("ผู้ดูแลระบบ");
+  const [currentTempleId, setCurrentTempleId] = useState<string | null>(null);
 
   const [recentActivities, setRecentActivities] = useState<ActivityItem[]>([]);
   const [latestProject, setLatestProject] = useState<ProjectItem | null>(null);
@@ -91,25 +92,27 @@ export default function AdminDashboardPage() {
       } else {
         setTempleName(data.temple_name || "วัดในระบบ Sathu");
         setAdminName(data.admin_name || "ผู้ดูแลระบบ");
+        setCurrentTempleId(data.id);
         setChecking(false);
-        loadDashboardData();
+        loadDashboardData(data.id);
       }
     }
 
     verifyApprovalStatus();
   }, [router]);
 
-  const loadDashboardData = () => {
-    fetchRecentActivities();
-    fetchLatestProject();
-    fetchDonationData();
-    fetchReviewData();
+  const loadDashboardData = (templeId: string) => {
+    fetchRecentActivities(templeId);
+    fetchLatestProject(templeId);
+    fetchDonationData(templeId);
+    fetchReviewData(templeId);
   };
 
-  const fetchRecentActivities = async () => {
+  const fetchRecentActivities = async (templeId: string) => {
     const { data } = await supabase
       .from("admin_activities")
       .select("id, title, location, date, time, status")
+      .eq("temple_id", templeId)
       .eq("status", "published")
       .order("date", { ascending: false })
       .limit(2);
@@ -117,10 +120,11 @@ export default function AdminDashboardPage() {
     if (data) setRecentActivities(data);
   };
 
-  const fetchLatestProject = async () => {
+  const fetchLatestProject = async (templeId: string) => {
     const { data } = await supabase
       .from("admin_projects")
       .select("id, title, image, status")
+      .eq("temple_id", templeId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -128,10 +132,24 @@ export default function AdminDashboardPage() {
     if (data) setLatestProject(data);
   };
 
-  const fetchDonationData = async () => {
+  const fetchDonationData = async (templeId: string) => {
+    const { data: projectsData } = await supabase
+      .from("admin_projects")
+      .select("id")
+      .eq("temple_id", templeId);
+
+    const projectIds = projectsData?.map((p) => p.id) || [];
+    if (projectIds.length === 0) {
+      setTotalDonationAmount(0);
+      setTotalDonorsCount(0);
+      setRecentDonations([]);
+      return;
+    }
+
     const { data: donations, error } = await supabase
       .from("donations")
-      .select("id, donor_name, amount, created_at, status")
+      .select("id, donor_name, amount, created_at, status, project_id")
+      .in("project_id", projectIds)
       .order("created_at", { ascending: false });
 
     if (donations && !error) {
@@ -143,10 +161,23 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const fetchReviewData = async () => {
+  const fetchReviewData = async (templeId: string) => {
+    const { data: projectsData } = await supabase
+      .from("admin_projects")
+      .select("id")
+      .eq("temple_id", templeId);
+
+    const projectIds = projectsData?.map((p) => p.id) || [];
+    if (projectIds.length === 0) {
+      setAvgRating(5.0);
+      setTotalReviews(0);
+      return;
+    }
+
     const { data: reviews, error } = await supabase
       .from("reviews")
-      .select("rating");
+      .select("rating, project_id")
+      .in("project_id", projectIds);
 
     if (reviews && !error && reviews.length > 0) {
       setTotalReviews(reviews.length);
@@ -183,7 +214,6 @@ export default function AdminDashboardPage() {
   return (
     <div className="w-full max-w-7xl mx-auto py-8 px-6 space-y-8 animate-fade-in-up font-sans text-slate-800 dark:text-slate-100">
       
-      {/* ส่วนหัว: Admin Dashboard & ชื่อวัดจริง (แก้ไม่ให้ตัวหนังสือเบียด) */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-purple-100/60 dark:border-purple-900/30">
         <div>
           <h2 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight leading-snug">
@@ -195,13 +225,10 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* Grid Layout หลักสำหรับเว็บ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* คอลัมน์ซ้ายและกลาง */}
         <div className="lg:col-span-2 space-y-6">
           
-         {/* การ์ดต้อนรับแอดมิน โทนเรียบสุภาพ รองรับโหมดมืด */}
           <div className="relative overflow-hidden rounded-2xl bg-purple-950 dark:bg-slate-900 text-white p-6 flex items-center justify-between shadow-md border border-purple-900/40 dark:border-slate-800">
             <div className="space-y-1 z-10">
               <span className="inline-block text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-white/10 text-purple-200 mb-1">
@@ -219,7 +246,6 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* สถิติภาพรวม */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             
             <div className="rounded-3xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/40 p-6 space-y-3.5 sm:col-span-2 shadow-xl shadow-purple-900/5 dark:shadow-none hover:border-purple-300 transition">
@@ -283,7 +309,6 @@ export default function AdminDashboardPage() {
 
           </div>
 
-          {/* เมนูทางลัด */}
           <div className="space-y-3">
             <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-wide">
               เมนูลัดจัดการระบบ
@@ -306,7 +331,6 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* โปรเจกต์ระดมทุนล่าสุด */}
           <div className="space-y-3">
             <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-wide">โปรเจกต์ระดมทุนล่าสุด</h3>
             <div className="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/40 shadow-xl group cursor-pointer" onClick={() => router.push("/admin/projects")}>
@@ -337,9 +361,7 @@ export default function AdminDashboardPage() {
 
         </div>
 
-        {/* คอลัมน์ขวา */}
         <div className="space-y-6">
-    {/* กิจกรรมล่าสุด */}
           <div className="rounded-3xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/40 p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-wide">กิจกรรมล่าสุด</h3>
@@ -371,7 +393,6 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* บริจาคล่าสุด */}
           <div className="rounded-3xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/40 p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-wide">บริจาคล่าสุด</h3>

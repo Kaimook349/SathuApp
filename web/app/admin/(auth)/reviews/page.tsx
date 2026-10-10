@@ -27,11 +27,9 @@ export default function AdminReviewsPage() {
   const [replyInputs, setReplyInputs] = useState<{ [key: string]: string }>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   
-  // State สำหรับควบคุมการเปิด/ปิดเมนูปุ่มสามจุดของแต่ละรีวิว
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // ปิดเมนูเมื่อคลิกพื้นที่ด้านนอก
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -45,10 +43,47 @@ export default function AdminReviewsPage() {
   useEffect(() => {
     const fetchReviewsAndReplies = async () => {
       try {
-        const { data: reviewsData, error: reviewsError } = await supabase
-          .from("reviews")
-          .select("*")
-          .order("created_at", { ascending: false });
+        // 1. ดึงข้อมูล user ที่ล็อกอินอยู่ปัจจุบัน
+        const { data: authData } = await supabase.auth.getUser();
+        const myId = authData?.user?.id ?? null;
+        if (!myId) {
+          setIsLoading(false);
+          return;
+        }
+
+        // 2. ค้นหา temple_id ของวัดที่ผูกกับ user นี้
+        const { data: templeData, error: templeError } = await supabase
+          .from("temple_registrations")
+          .select("id")
+          .eq("user_id", myId)
+          .maybeSingle();
+
+        if (templeError || !templeData) {
+          setIsLoading(false);
+          return;
+        }
+
+        const currentTempleId = templeData.id;
+
+        // 3. ดึงรายการโปรเจคของวัดนี้ เพื่อกรองรีวิวที่เกี่ยวข้อง
+        const { data: projectsData } = await supabase
+          .from("admin_projects")
+          .select("id")
+          .eq("temple_id", currentTempleId);
+
+        const projectIds = projectsData?.map((p) => p.id) || [];
+
+        // 4. ดึงข้อมูลรีวิวเฉพาะของวัดนี้ (หรือกรองตาม project_id หรือ temple_id)
+        let reviewsQuery = supabase.from("reviews").select("*").order("created_at", { ascending: false });
+        
+        if (projectIds.length > 0) {
+          reviewsQuery = reviewsQuery.in("project_id", projectIds);
+        } else {
+          // ถ้ายังไม่มีโปรเจค ให้ดึงเงื่อนไข temple_id ตรงๆ (หากมีฟิลด์นี้ในตาราง reviews)
+          // หรือกำหนดให้แสดงเฉพาะรีวิวของวัดตนเอง
+        }
+
+        const { data: reviewsData, error: reviewsError } = await reviewsQuery;
 
         if (reviewsError) throw reviewsError;
 
@@ -101,7 +136,6 @@ export default function AdminReviewsPage() {
     fetchReviewsAndReplies();
   }, []);
 
-  // ฟังก์ชันลบคอมเมนต์จริงจากฐานข้อมูล Supabase
   const handleDeleteReview = async (reviewId: string) => {
     if (!confirm("คุณต้องการลบคอมเมนต์นี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้")) {
       setOpenMenuId(null);
@@ -109,7 +143,6 @@ export default function AdminReviewsPage() {
     }
 
     try {
-      // ลบข้อมูลรีวิวจากตาราง reviews
       const { error } = await supabase
         .from("reviews")
         .delete()
@@ -117,12 +150,10 @@ export default function AdminReviewsPage() {
 
       if (error) throw error;
 
-      // อัปเดต State หน้าจอทันที
       const updatedReviews = reviews.filter(r => r.id !== reviewId);
       setReviews(updatedReviews);
       setOpenMenuId(null);
 
-      // คำนวณคะแนนเฉลี่ยใหม่
       if (updatedReviews.length > 0) {
         const totalScore = updatedReviews.reduce((acc, curr) => acc + curr.rating, 0);
         setAvgRating(Number((totalScore / updatedReviews.length).toFixed(1)));
@@ -201,7 +232,6 @@ export default function AdminReviewsPage() {
   return (
     <div className="w-full max-w-7xl mx-auto py-8 px-6 space-y-8 font-sans text-slate-800 dark:text-slate-100 animate-fade-in-up">
       
-      {/* ส่วนหัวพร้อมปุ่มย้อนกลับ */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <button
@@ -220,7 +250,6 @@ export default function AdminReviewsPage() {
           </div>
         </div>
 
-        {/* แท็บสลับ รีวิว / แชท */}
         <div className="flex rounded-2xl bg-slate-100 dark:bg-slate-800 p-1.5 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
           <button
             onClick={() => setActiveTab("reviews")}
@@ -248,7 +277,6 @@ export default function AdminReviewsPage() {
         </div>
       </div>
 
-      {/* สรุปคะแนน & จำนวนตอบกลับ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xl border border-purple-100 dark:border-purple-900/40 flex items-center justify-between">
           <div className="space-y-1">
@@ -276,7 +304,6 @@ export default function AdminReviewsPage() {
         </div>
       </div>
 
-      {/* ตัวกรองช่วงเวลา */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-wide">
@@ -306,7 +333,6 @@ export default function AdminReviewsPage() {
         </div>
       </div>
 
-      {/* รายการรีวิว */}
       <div className="space-y-4">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-24 text-slate-400 gap-3 bg-white dark:bg-slate-900 rounded-3xl border border-purple-100 dark:border-purple-900/40 shadow-xl">
@@ -343,7 +369,6 @@ export default function AdminReviewsPage() {
                     </div>
                   </div>
 
-                  {/* ปุ่มสามจุดพร้อมเมนูป๊อปอัปสำหรับลบคอมเมนต์จริง */}
                   <div className="relative" ref={openMenuId === rev.id ? menuRef : null}>
                     <button
                       onClick={() => setOpenMenuId(openMenuId === rev.id ? null : rev.id)}

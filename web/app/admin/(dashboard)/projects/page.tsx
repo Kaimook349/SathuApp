@@ -19,13 +19,43 @@ export default function ProjectsPage() {
 
   const fetchProjects = async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from("admin_projects")
-      .select("*")
-      .order("created_at", { ascending: false })
+    try {
+      // 1. ดึงข้อมูล user ที่ล็อกอินอยู่ปัจจุบัน
+      const { data: authData } = await supabase.auth.getUser()
+      const myId = authData?.user?.id ?? null
+      if (!myId) {
+        setLoading(false)
+        return
+      }
 
-    if (data) setProjects(data)
-    setLoading(false)
+      // 2. ค้นหา temple_id ของวัดที่ผูกกับ user นี้
+      const { data: templeData, error: templeError } = await supabase
+        .from("temple_registrations")
+        .select("id")
+        .eq("user_id", myId)
+        .maybeSingle()
+
+      if (templeError || !templeData) {
+        setLoading(false)
+        return
+      }
+
+      const currentTempleId = templeData.id
+
+      // 3. ดึงข้อมูลโปรเจคเฉพาะของ temple_id นี้เท่านั้น
+      const { data, error } = await supabase
+        .from("admin_projects")
+        .select("*")
+        .eq("temple_id", currentTempleId)
+        .order("created_at", { ascending: false })
+
+      if (error) throw error
+      if (data) setProjects(data)
+    } catch (err) {
+      console.error("Error fetching projects:", err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   // เปลี่ยนเป็นอัปเดตสถานะเป็น ended แทนการลบ

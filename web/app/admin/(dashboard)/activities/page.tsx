@@ -36,25 +36,68 @@ export default function ActivitiesPage() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [monthEventDates, setMonthEventDates] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [myTempleId, setMyTempleId] = useState<string | null>(null);
   
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
 
+  // 1. ค้นหา temple_id ของแอดมินที่ล็อกอินอยู่ปัจจุบัน
   useEffect(() => {
-    fetchMonthEvents();
-  }, [currentYear, currentMonth]);
+    async function fetchMyTemple() {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData?.user) {
+        setLoading(false);
+        return;
+      }
+
+      // ค้นหา temple_id จากตาราง temple_registrations ด้วย user_id
+      let { data: temple } = await supabase
+        .from("temple_registrations")
+        .select("id, temple_name")
+        .eq("user_id", authData.user.id)
+        .maybeSingle();
+
+      // เผื่อกรณีเก็บบันทึกเป็น email
+      if (!temple && authData.user.email) {
+        const { data: templeByEmail } = await supabase
+          .from("temple_registrations")
+          .select("id, temple_name")
+          .eq("email", authData.user.email)
+          .maybeSingle();
+        temple = templeByEmail;
+      }
+
+      if (temple) {
+        setMyTempleId(temple.id);
+      } else {
+        setLoading(false);
+      }
+    }
+    fetchMyTemple();
+  }, []);
 
   useEffect(() => {
-    fetchActivities();
-  }, [selectedDate]);
+    if (myTempleId) {
+      fetchMonthEvents();
+    }
+  }, [currentYear, currentMonth, myTempleId]);
+
+  useEffect(() => {
+    if (myTempleId) {
+      fetchActivities();
+    }
+  }, [selectedDate, myTempleId]);
 
   const fetchMonthEvents = async () => {
+    if (!myTempleId) return;
     const startDate = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-01`;
     const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
     const endDate = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${lastDay}`;
 
+    // ดึงเฉพาะกิจกรรมที่เป็นของวัดตัวเองเท่านั้น
     const { data } = await supabase
       .from("admin_activities")
       .select("date")
+      .eq("temple_id", myTempleId)
       .eq("status", "published")
       .gte("date", startDate)
       .lte("date", endDate);
@@ -66,10 +109,14 @@ export default function ActivitiesPage() {
   };
 
   const fetchActivities = async () => {
+    if (!myTempleId) return;
     setLoading(true);
+    
+    // ดึงเฉพาะรายการกิจกรรมที่เป็นของวัดตัวเองเท่านั้นตามวันที่เลือก
     const { data } = await supabase
       .from("admin_activities")
       .select("*")
+      .eq("temple_id", myTempleId)
       .eq("date", selectedDate)
       .eq("status", "published");
 
@@ -104,7 +151,6 @@ export default function ActivitiesPage() {
   return (
     <div className="w-full max-w-7xl mx-auto py-8 px-6 space-y-8 font-sans text-slate-800 dark:text-slate-100">
       
-      {/* ส่วนหัวหน้ากิจกรรม (เอาปุ่มลูกศรออกแล้ว) */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white mt-0.5">
@@ -131,7 +177,6 @@ export default function ActivitiesPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* ปฏิทิน (ปรับสีขอบและดีไซน์ให้เหมือนหน้าแดชบอร์ด) */}
         <div className="lg:col-span-1 space-y-4">
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-purple-100 dark:border-purple-900/40 p-6 shadow-xl space-y-5">
             <div className="flex items-center justify-between">
@@ -178,7 +223,7 @@ export default function ActivitiesPage() {
                       isSelected
                         ? "bg-purple-700 text-white shadow-sm"
                         : hasEvent
-                        ? "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-bold border border-rose-200 dark:border-rose-800/60" // เปลี่ยนวันที่มีกิจกรรมเป็นสีแดง
+                        ? "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-bold border border-rose-200 dark:border-rose-800/60"
                         : isToday
                         ? "border border-purple-600 text-purple-600 dark:text-purple-400 font-bold"
                         : "bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -192,7 +237,6 @@ export default function ActivitiesPage() {
           </div>
         </div>
 
-        {/* รายการกิจกรรม */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between bg-white dark:bg-slate-900 rounded-3xl border border-purple-100 dark:border-purple-900/40 p-5 shadow-xl">
             <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200">
@@ -258,7 +302,6 @@ export default function ActivitiesPage() {
 
       </div>
 
-      {/* Modal: แสดงรายละเอียดกิจกรรม */}
       {selectedActivity && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
           <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 relative max-h-[90vh] overflow-y-auto">

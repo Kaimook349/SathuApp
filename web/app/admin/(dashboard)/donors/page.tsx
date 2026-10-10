@@ -46,15 +46,51 @@ export default function DonorsPage() {
   useEffect(() => {
     const fetchDonations = async () => {
       try {
+        // 1. ดึงข้อมูล user ที่ล็อกอินอยู่ปัจจุบัน
+        const { data: authData } = await supabase.auth.getUser()
+        const myId = authData?.user?.id ?? null
+        if (!myId) {
+          setIsLoading(false)
+          return
+        }
+
+        // 2. ค้นหา temple_id ของวัดที่ผูกกับ user นี้
+        const { data: templeData, error: templeError } = await supabase
+          .from("temple_registrations")
+          .select("id")
+          .eq("user_id", myId)
+          .maybeSingle()
+
+        if (templeError || !templeData) {
+          setIsLoading(false)
+          return
+        }
+
+        const currentTempleId = templeData.id
+
+        // 3. ดึงรายการโปรเจคทั้งหมดของวัดนี้ก่อน เพื่อนำ id ไปกรองยอดบริจาค
+        const { data: projectsData } = await supabase
+          .from("admin_projects")
+          .select("id, title")
+          .eq("temple_id", currentTempleId)
+
+        const projectIds = projectsData?.map((p) => p.id) || []
+        const projectMap = new Map(projectsData?.map((p) => [p.id, p.title]))
+
+        if (projectIds.length === 0) {
+          setDonations([])
+          setIsLoading(false)
+          return
+        }
+
+        // 4. ดึงข้อมูลการบริจาคเฉพาะที่ตรงกับโปรเจคของวัดนี้ (หรือกรองด้วย temple_id ตามโครงสร้างตาราง donations ของคุณ)
         const { data, error } = await supabase
           .from("donations")
-          .select("id, donor_name, amount, payment_method, created_at, status")
+          .select("id, donor_name, amount, payment_method, created_at, status, project_id")
+          .in("project_id", projectIds)
           .order("created_at", { ascending: false })
 
-        if (error) {
-          console.error("Supabase query error:", error)
-          throw error
-        }
+        if (error) throw error
 
         if (data) {
           const formattedData: DonationItem[] = data.map((item: any) => ({
@@ -67,14 +103,14 @@ export default function DonorsPage() {
               month: "short",
               day: "numeric",
             }),
-            project: "บริจาคบำรุงวัดและกิจกรรมทั่วไป",
+            project: projectMap.get(item.project_id) || "บริจาคบำรุงวัดและกิจกรรมทั่วไป",
             anonymous: !item.donor_name,
           }))
 
           setDonations(formattedData)
         }
       } catch (err: any) {
-        console.error("Catch error fetching donations:", err.message || err)
+        console.error("Error fetching donations:", err.message || err)
       } finally {
         setIsLoading(false)
       }
@@ -95,17 +131,13 @@ export default function DonorsPage() {
   const totalDonors = filtered.length
   const avgAmount = totalDonors > 0 ? Math.round(totalAmount / totalDonors) : 0
 
-  // ฟังก์ชันส่งออกข้อมูลเป็นไฟล์ CSV จริง
   const handleExportCSV = () => {
     if (filtered.length === 0) {
       alert("ไม่มีข้อมูลสำหรับส่งออก")
       return
     }
 
-    // กำหนด Header ของ CSV
     const headers = ["ลำดับ,ชื่อผู้บริจาค,โครงการ,ช่องทาง,วันที่,จำนวนเงิน (บาท)"]
-
-    // แปลงข้อมูลแต่ละแถว
     const rows = filtered.map((d, index) => {
       const name = `"${d.name.replace(/"/g, '""')}"`
       const project = `"${d.project.replace(/"/g, '""')}"`
@@ -115,10 +147,7 @@ export default function DonorsPage() {
       return `${index + 1},${name},${project},${method},${date},${amount}`
     })
 
-    // รวม Header และ Rows
     const csvContent = "\uFEFF" + [headers, ...rows].join("\n")
-    
-    // สร้าง Blob และสั่งดาวน์โหลดไฟล์
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
@@ -132,7 +161,6 @@ export default function DonorsPage() {
   return (
     <div className="w-full max-w-7xl mx-auto py-8 px-6 space-y-8 font-sans text-slate-800 dark:text-slate-100 animate-fade-in-up">
       
-      {/* ส่วนหัวพร้อมปุ่มย้อนกลับ */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <button
@@ -159,7 +187,6 @@ export default function DonorsPage() {
         </button>
       </div>
 
-      {/* การ์ดสถิติภาพรวม */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xl border border-purple-100 dark:border-purple-900/40 flex items-center gap-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 shadow-2xs shrink-0">
@@ -198,7 +225,6 @@ export default function DonorsPage() {
         </div>
       </div>
 
-      {/* ตารางแสดงข้อมูลผู้บริจาค */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-purple-100 dark:border-purple-900/40 p-6 shadow-xl space-y-6">
         
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

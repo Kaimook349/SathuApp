@@ -13,19 +13,42 @@ export default function TransparencyPage() {
   const [reportDetail, setReportDetail] = useState("")
   const [loading, setLoading] = useState(false)
 
-  // ดึงข้อมูลโครงการจริงจาก Supabase
+  // ดึงข้อมูลโครงการเฉพาะของวัดที่ล็อกอินอยู่จาก Supabase
   useEffect(() => {
     fetchProjects()
   }, [])
 
   const fetchProjects = async () => {
-    const { data } = await supabase
-      .from("admin_projects")
-      .select("*")
-      .order("created_at", { ascending: false })
+    try {
+      // 1. ดึงข้อมูล user ที่ล็อกอินอยู่ปัจจุบัน
+      const { data: authData } = await supabase.auth.getUser()
+      const myId = authData?.user?.id ?? null
+      if (!myId) return
 
-    if (data) {
-      setProjects(data)
+      // 2. ค้นหา temple_id ของวัดที่ผูกกับ user นี้
+      const { data: templeData, error: templeError } = await supabase
+        .from("temple_registrations")
+        .select("id")
+        .eq("user_id", myId)
+        .maybeSingle()
+
+      if (templeError || !templeData) return
+
+      const currentTempleId = templeData.id
+
+      // 3. ดึงข้อมูลโปรเจคเฉพาะของ temple_id นี้เท่านั้น
+      const { data, error } = await supabase
+        .from("admin_projects")
+        .select("*")
+        .eq("temple_id", currentTempleId)
+        .order("created_at", { ascending: false })
+
+      if (error) throw error
+      if (data) {
+        setProjects(data)
+      }
+    } catch (err) {
+      console.error("Error fetching projects for transparency:", err)
     }
   }
 
@@ -67,7 +90,7 @@ export default function TransparencyPage() {
   return (
     <div className="w-full max-w-7xl mx-auto py-8 px-6 space-y-8 font-sans text-slate-800 dark:text-slate-100 animate-fade-in-up">
       
-      {/* ส่วนหัว (เอาปุ่มลูกศรย้อนกลับออกตามสไตล์หน้าอื่น และปรับให้เต็มหน้าจอ) */}
+      {/* ส่วนหัว */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white mt-0.5">
@@ -81,11 +104,11 @@ export default function TransparencyPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* คอลัมน์ซ้าย: รายการโปรเจคทั้งหมด (กินพื้นที่ 2 ส่วน) */}
+        {/* คอลัมน์ซ้าย: รายการโปรเจคทั้งหมดของวัด */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between bg-white dark:bg-slate-900 rounded-3xl border border-purple-100 dark:border-purple-900/40 p-5 shadow-xl">
             <h2 className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-              <FileText size={16} className="text-purple-600 dark:text-purple-400" /> โครงการระดมทุนทั้งหมดในระบบ
+              <FileText size={16} className="text-purple-600 dark:text-purple-400" /> โครงการระดมทุนทั้งหมดของวัดคุณ
             </h2>
           </div>
           

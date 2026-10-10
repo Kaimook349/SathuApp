@@ -2,7 +2,7 @@
 
 import type React from "react"
 import Link from "next/link"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, X, DollarSign, ImagePlus } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
@@ -29,11 +29,36 @@ export default function NewProjectPage() {
   const [goal, setGoal] = useState("")
   const [endDate, setEndDate] = useState("")
   
+  const [templeId, setTempleId] = useState<string | null>(null)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState("")
   const [loading, setLoading] = useState(false)
   
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // ดึง temple_id ของวัดที่ล็อกอินอยู่ปัจจุบัน
+  useEffect(() => {
+    const fetchTempleId = async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser()
+        const myId = authData?.user?.id ?? null
+        if (!myId) return
+
+        const { data, error } = await supabase
+          .from("temple_registrations")
+          .select("id")
+          .eq("user_id", myId)
+          .maybeSingle()
+
+        if (!error && data) {
+          setTempleId(data.id)
+        }
+      } catch (err) {
+        console.error("Error fetching temple id:", err)
+      }
+    }
+    fetchTempleId()
+  }, [])
 
   const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -63,6 +88,11 @@ export default function NewProjectPage() {
       return
     }
 
+    if (!templeId) {
+      alert("ไม่พบข้อมูลรหัสวัดของคุณ กรุณาเข้าสู่ระบบใหม่อีกครั้ง")
+      return
+    }
+
     setLoading(true)
     try {
       let finalImageUrl = "https://images.unsplash.com/photo-1544816155-12df9643f363"
@@ -72,6 +102,7 @@ export default function NewProjectPage() {
 
       const { error } = await supabase.from("admin_projects").insert([
         {
+          temple_id: templeId, // ผูกโปรเจคกับ ID ของวัดนั้นๆ
           title,
           category,
           description,
@@ -222,7 +253,6 @@ export default function NewProjectPage() {
           />
         </div>
 
-        {/* ปรับให้กดเลือกจำนวนเงินแนะนำได้จริง */}
         <div className="space-y-3">
           <label className="block text-xs font-bold text-foreground flex items-center gap-1.5">
             <DollarSign size={16} className="text-primary" /> จำนวนเงินที่แนะนำให้ผู้บริจาคเลือก (คลิกเพื่อตั้งเป็นเป้าหมาย)

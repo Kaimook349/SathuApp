@@ -25,23 +25,68 @@ export default function AnalyticsPage() {
       try {
         setIsLoading(true)
 
-        const { data: donations, error: donationError } = await supabase
-          .from("donations")
-          .select("amount, donor_name, created_at, project_id")
-
-        if (donationError) throw donationError
-
-        if (donations) {
-          const sum = donations.reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
-          setTotalAmount(sum)
-          setTotalDonors(donations.length)
+        // 1. ตรวจสอบผู้ใช้ปัจจุบันและดึง temple_id ของวัดตัวเอง
+        const { data: authData } = await supabase.auth.getUser()
+        if (!authData?.user) {
+          setIsLoading(false)
+          return
         }
 
+        let { data: temple } = await supabase
+          .from("temple_registrations")
+          .select("id")
+          .eq("user_id", authData.user.id)
+          .maybeSingle()
+
+        if (!temple && authData.user.email) {
+          const { data: templeByEmail } = await supabase
+            .from("temple_registrations")
+            .select("id")
+            .eq("email", authData.user.email)
+            .maybeSingle()
+          temple = templeByEmail
+        }
+
+        if (!temple) {
+          setIsLoading(false)
+          return
+        }
+
+        const myTempleId = temple.id
+
+        // 2. ดึงข้อมูลโครงการ (Projects) เฉพาะของวัดตัวเองก่อน เพื่อเอา ID ไปกรองยอดบริจาค
         const { data: projects, error: projectError } = await supabase
           .from("admin_projects")
           .select("id, title")
+          .eq("temple_id", myTempleId)
 
-        if (!projectError && projects && donations) {
+        if (projectError) throw projectError
+
+        const projectIds = projects?.map(p => p.id) || []
+
+        // 3. ดึงข้อมูลยอดบริจาคเฉพาะของโปรเจกต์ในวัดตัวเอง
+        let donations: any[] = []
+        if (projectIds.length > 0) {
+          const { data: donationData, error: donationError } = await supabase
+            .from("donations")
+            .select("amount, donor_name, created_at, project_id")
+            .in("project_id", projectIds)
+
+          if (donationError) throw donationError
+          donations = donationData || []
+        }
+
+        if (donations.length > 0) {
+          const sum = donations.reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
+          setTotalAmount(sum)
+          setTotalDonors(donations.length)
+        } else {
+          setTotalAmount(0)
+          setTotalDonors(0)
+        }
+
+        // 4. คำนวณยอดบริจาคแยกตามโปรเจกต์ของวัดตัวเอง
+        if (projects && donations) {
           const stats = projects.map(proj => {
             const projDonations = donations.filter(d => d.project_id === proj.id)
             const projSum = projDonations.reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
@@ -53,12 +98,16 @@ export default function AnalyticsPage() {
           setProjectStats(stats)
         }
 
+        // 5. ดึงจำนวนรีวิวเฉพาะของวัดตัวเอง
         const { count, error: reviewError } = await supabase
           .from("reviews")
           .select("*", { count: "exact", head: true })
+          .eq("temple_id", myTempleId)
 
         if (!reviewError && count !== null) {
           setReviewsCount(count)
+        } else {
+          setReviewsCount(0)
         }
 
       } catch (err) {
@@ -154,7 +203,7 @@ export default function AnalyticsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* ยอดบริจาคแยกตามโปรเจกต์ (กินพื้นที่ 2 คอลัมน์) */}
+        {/* ยอดบริจาคแยกตามโปรเจกต์ */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-7 shadow-xl border border-purple-100 dark:border-purple-900/40 space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
             <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -188,7 +237,7 @@ export default function AnalyticsPage() {
           )}
         </div>
 
-        {/* สรุปข้อมูลรีวิวและความคิดเห็น (กินพื้นที่ 1 คอลัมน์) */}
+        {/* สรุปข้อมูลรีวิวและความคิดเห็น */}
         <div className="lg:col-span-1 bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-7 shadow-xl border border-purple-100 dark:border-purple-900/40 space-y-5 flex flex-col justify-between">
           <div className="space-y-4">
             <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
