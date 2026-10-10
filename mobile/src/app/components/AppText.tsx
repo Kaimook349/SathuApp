@@ -1,0 +1,570 @@
+import React, { useEffect, useState } from 'react';
+import { Text, TextProps } from 'react-native';
+import { useLang } from '../../context/LanguageContext';
+import { translateText } from '../../utils/translateApi';
+
+type Props = TextProps & {
+  children?: React.ReactNode;
+  noTranslate?: boolean;
+};
+
+// พจนานุกรมแปลคำศัพท์ UI (แม่นยำ 100% ไม่พึ่ง API นอก)
+const uiDictionary: Record<string, string> = {
+  'หน้าหลัก': 'Home',
+  'กิจกรรม': 'Activities',
+  'ทำบุญ': 'Donation',
+  'สำรวจ': 'Explore',
+  'โปรไฟล์': 'Profile',
+  'การตั้งค่า': 'Settings',
+  'ภาษา': 'Language',
+  'ภาษาไทย': 'Thai',
+  'English': 'English',
+  'ธีม': 'Theme',
+  'สว่าง': 'Light',
+  'มืด': 'Dark',
+  'ตามระบบ': 'System',
+  'บัญชี': 'Account',
+  'ออกจากระบบ': 'Log out',
+
+  // --- เพิ่มคำศัพท์สำหรับหน้ากิจกรรม (ActivitiesScreen) ---
+  'ปฏิทินกิจกรรมวัดศาลาลอย': 'Wat Sala Loi Activity Calendar',
+  'ตัวกรอง': 'Filter',
+  'ยังไม่มีกิจกรรมในวันนี้': 'No activities today',
+  'สามารถเพิ่มข้อมูลกิจกรรมได้ที่เมนูเพิ่มข้อมูล': 'You can add activity data in the add menu',
+  'ตั้งเตือน': 'Remind',
+  'แชร์': 'Share',
+  'ตั้งค่าการแจ้งเตือน': 'Notification Settings',
+  'ชื่อแจ้งเตือน': 'Reminder Title',
+  'เวลา (ชม. : นาที)': 'Time (Hr : Min)',
+  'ยกเลิก': 'Cancel',
+  'สำเร็จ': 'Success',
+  'เกิดข้อผิดพลาด': 'Error',
+
+  // --- เพิ่มคำศัพท์จากหน้า ActivityDetailScreen ---
+  'กำลังโหลดข้อมูลกิจกรรม...': 'Loading activity details...',
+  'ไม่พบข้อมูลกิจกรรมนี้': 'Activity not found',
+  'ย้อนกลับ': 'Back',
+  'ผ่านการอนุมัติ': 'Approved',
+  'รออนุมัติ': 'Pending',
+  'ไม่อนุมัติ': 'Rejected',
+  'ไม่ระบุ': 'Not specified',
+  'วันที่': 'Date',
+  'เวลา': 'Time',
+  'สถานที่': 'Location',
+  'ยอดบริจาครวม (อนุมัติแล้ว)': 'Total Donations (Approved)',
+  'รายละเอียดกิจกรรม': 'Activity Details',
+  'ไม่มีรายละเอียดเพิ่มเติม': 'No additional details',
+  'วัตถุประสงค์การบริจาค': 'Donation Purpose',
+  'ช่องทางรับบริจาค': 'Donation Channels',
+  'ธนาคาร': 'Bank',
+  'ชื่อบัญชี': 'Account Name',
+  'เลขบัญชี / พร้อมเพย์': 'Account No. / PromptPay',
+  'ความคิดเห็น & รีวิว': 'Comments & Reviews',
+  'ดูทั้งหมด >': 'See All >',
+  'ยังไม่มีความคิดเห็น เป็นคนแรกที่มารีวิวเลย!': 'No comments yet. Be the first to review!',
+  'เขียนรีวิวความประทับใจ': 'Write a Review',
+  'ผู้จัดกิจกรรม': 'Organizer',
+  'เพิ่มเพื่อน': 'Add Friend',
+  'สร้างเมื่อ': 'Created on',
+  'ร่วมทำบุญ / สนับสนุน': 'Donate / Support',
+  'แจ้งเตือน': 'Notification',
+  'ไม่พบข้อมูลผู้สร้างกิจกรรม': 'Creator data not found',
+  'กรุณาเข้าสู่ระบบก่อน': 'Please log in first',
+  'คุณไม่สามารถเพิ่มเพื่อนกับตัวเองได้': 'You cannot add yourself as a friend',
+  'คุณได้ส่งคำขอหรือเป็นเพื่อนกันอยู่แล้ว': 'You have already sent a request or are friends',
+  'ส่งคำขอไม่สำเร็จ': 'Failed to send request',
+
+  // --- เพิ่มคำศัพท์จากหน้า ActivityStatusScreen ---
+  'สถานะกิจกรรมของฉัน': 'My Activity Status',
+  'ติดตามการตรวจสอบและอนุมัติกิจกรรม': 'Track review and approval of activities',
+  'รายการที่เสนอทั้งหมด': 'All Submitted Items',
+  'รายการ': 'items',
+  'ยังไม่มีรายการกิจกรรม': 'No Activity Items',
+  'คุณยังไม่ได้ส่งคำขอสร้างกิจกรรมใดๆ ในขณะนี้': 'You have not submitted any activity requests at this time.',
+  'ไม่มีรูปภาพประกอบ': 'No image attached',
+  'ส่งเมื่อ': 'Submitted on',
+
+  // --- เพิ่มคำศัพท์จากหน้า AddTempleScreen ---
+  'เพิ่มข้อมูลวัด': 'Add Temple Info',
+  'แบ่งปันบุญ · กิจกรรม · บริจาค': 'Share Merits · Activities · Donations',
+  'ข้อมูลจะเผยแพร่หลังอนุมัติ': 'Information will be published after approval',
+  'กรอกให้ครบ ชัดเจน เพื่อให้คนอื่นค้นหาได้ง่าย': 'Fill in completely and clearly so others can easily find it.',
+  'ประเภทข้อมูล': 'Data Category',
+  'พิธีสงฆ์': 'Religious Ceremony',
+  'งานบุญ · วันที่': 'Merit Event · Date',
+  'บริจาค': 'Donation',
+  'บัญชี · จุดประสงค์': 'Account · Purpose',
+  'รูปภาพปก': 'Cover Image',
+  'เปลี่ยนรูป': 'Change Image',
+  'เพิ่มรูปภาพกิจกรรม': 'Add Activity Image',
+  'แนะนำสัดส่วน 16:9 · แตะเพื่อเลือก': 'Recommended 16:9 ratio · Tap to select',
+  'ข้อมูลหลัก': 'Main Information',
+  'ชื่อวัดและชื่อกิจกรรม': 'Temple name and activity name',
+  'ชื่อวัด / สถานที่': 'Temple Name / Location',
+  'ชื่อกิจกรรม': 'Activity Name',
+  'กำหนดการ': 'Schedule',
+  'วันและเวลาจัดกิจกรรม': 'Activity Date and Time',
+  'วันที่จัดกิจกรรม': 'Activity Date',
+  'เวลาเริ่มพิธี': 'Ceremony Start Time',
+  'บัญชีรับบริจาค': 'Donation Account',
+  'ข้อมูลโอนและจุดประสงค์': 'Transfer info and purpose',
+  'ชื่อธนาคาร': 'Bank Name',
+  'เลขที่บัญชี': 'Account Number',
+  'จุดประสงค์การบริจาค': 'Donation Purpose',
+  'ที่ตั้ง': 'Location',
+  'จังหวัด · อำเภอ · ตำบล': 'Province · District · Subdistrict',
+  'จังหวัด': 'Province',
+  'อำเภอ / เขต': 'District / Area',
+  'ตำบล / แขวง': 'Subdistrict',
+  'รายละเอียดเพิ่มเติม': 'Additional Details',
+  'ส่งข้อมูลเพื่อรออนุมัติ': 'Submit for Approval',
+  'ข้อมูลจะเผยแพร่หลังผู้ดูแลอนุมัติ': 'Information will be published after admin approval',
+  'เลือกจังหวัด': 'Select Province',
+  'เลือกอำเภอ / เขต': 'Select District',
+  'เลือกตำบล / แขวง': 'Select Subdistrict',
+  'พิมพ์เพื่อค้นหา...': 'Type to search...',
+  'ไม่พบรายการ': 'No items found',
+  'เลือกอำเภอ': 'Select District',
+  'เลือกตำบล': 'Select Subdistrict',
+  
+  // --- เพิ่มคำศัพท์จากหน้า AIChatScreen ---
+  'สาธุ AI': 'Sathu AI',
+  'ผู้ช่วยธรรมะ · ใช้งานได้จริง': 'Dharma Assistant · Ready to help',
+  'กำลังคิด...': 'Thinking...',
+  'ลองถาม:': 'Try asking:',
+  'วันพระถัดไปคือวันไหน?': 'When is the next Buddhist Holy Day?',
+  'ทำบุญวันเกิดทำอย่างไร?': 'How to make merit on a birthday?',
+  'ความหมายของกรรมคืออะไร?': 'What is the meaning of Karma?',
+  'ลอยกระทงมีความหมายว่าอะไร?': 'What is the meaning of Loy Krathong?',
+  'ถามเรื่องธรรมะ ทำบุญ วันพระ...': 'Ask about Dhamma, merit, holy days...',
+
+  // --- เพิ่มคำศัพท์จากหน้า CalendarScreen ---
+  'ปฏิทินวันดี': 'Auspicious Calendar',
+  'วันพระและวันมงคลสำหรับทำบุญ': 'Holy days and auspicious days for merit-making',
+  'ไม่มีข้อมูลวันพระในเดือนนี้': 'No holy day data for this month',
+  'อา': 'Sun',
+  'จ': 'Mon',
+  'อ': 'Tue',
+  'พ': 'Wed',
+  'พฤ': 'Thu',
+  'ศ': 'Fri',
+  'ส': 'Sat',
+  '🙏 วันพระ · 🪷 วันสำคัญ (มาฆบูชา วิสาขฯ)': '🙏 Holy Day · 🪷 Major Day (Makha Bucha, Visakha Bucha)',
+
+
+// --- เพิ่มคำศัพท์จากหน้า HomeScreen ---
+  'ขอให้วันนี้จิตใจสงบและเปี่ยมด้วยบุญ': 'May your day be peaceful and full of merit',
+  'แต้ม': 'Points',
+  'วันสำคัญ': 'Important Day',
+  'ธรรมสวนะ': 'Observance Day',
+  'วันธรรมดา · เตรียมใจทำบุญ': 'Ordinary Day · Prepare your heart for merit',
+  'แตะเพื่อดูปฏิทินวันพระ →': 'Tap to view holy day calendar →',
+  'วัดใกล้': 'Nearby Temples',
+  'แต้มบุญ': 'Merit Points',
+  'ทางลัด': 'Shortcuts',
+  'หาวัด': 'Find Temple',
+  'บทสวด': 'Chants',
+  'บุญวัน': 'Daily Merit',
+  'สงบ': 'Focus',
+  '📍 วัดใกล้คุณ': '📍 Nearby Temples',
+  'กำลังค้นหาวัดใกล้คุณ...': 'Searching for nearby temples...',
+  'ไม่สามารถโหลดวัดใกล้คุณได้': 'Unable to load nearby temples',
+  'แตะเพื่อลองใหม่': 'Tap to try again',
+  'ไม่พบวัดในรัศมีใกล้เคียง': 'No temples found in the nearby radius',
+  'ค้นหาบนแผนที่ →': 'Search on map →',
+  'ดูทั้งหมด\nบนแผนที่': 'See All\non Map',
+  'ฟีเจอร์เด่น': 'Featured Features',
+  'AI ผู้ช่วยบุญ': 'Sathu AI Assistant',
+  'ถามธรรมะ บุญ กรรม วันพระ ได้ทันที': 'Ask about Dhamma, merit, karma, holy days instantly',
+  'บทสวดมนต์': 'Prayer Chants',
+  'เลือกบทสวดตามอารมณ์ใจของคุณ': 'Choose chants according to your mood',
+  'โหมดสงบ': 'Peaceful Mode',
+  'จับเวลาสวด/นั่งสมาธิ แล้วบันทึกบุญ': 'Timer for chanting/meditation and record merit',
+  'ทริปบุญของฉัน': 'My Merit Trips',
+  'จัดการเส้นทางและสร้างทริปไหว้พระ': 'Manage routes and create temple tour trips',
+  'ธรรมะเตือนสติวันนี้': 'Today Dhamma Wisdom',
+  'อ่านบทสวดเพิ่มเติม →': 'Read more chants →',
+  'กิจกรรมที่ใกล้จะถึง': 'Upcoming Activity',
+  'ยังไม่มีกิจกรรม': 'No activities yet',
+  'รอการอนุมัติกิจกรรม': 'Waiting for activity approval',
+  'วันมงคลสำหรับทำบุญและพิธีสำคัญ': 'Auspicious days for merit-making and ceremonies',
+
+  // --- คำศัพท์ทั้งหมดจากหน้า ChantDetailScreen ---
+  'ไม่พบบทสวดนี้': 'Chant not found',
+  'ประโยชน์': 'Benefits',
+  'เวลาที่สวด': 'Chanting Time',
+  'เริ่มสวด': 'Start',
+  'พัก': 'Pause',
+  'สวดเสร็จ · บันทึกบุญ': 'Finish · Record Merit',
+  'กรุณาเข้าสู่ระบบเพื่อบันทึกบุญ': 'Please log in to record merit',
+  'อนุโมทนา 🙏': 'Sadhu 🙏',
+  'บันทึกการสวดมนต์เป็นบุญประจำวันแล้ว': 'Chanting recorded as daily merit',
+  'ตกลง': 'OK',
+  'ผิดพลาด': 'Error',
+  'บันทึกไม่สำเร็จ': 'Failed to save',
+  'นาที': 'mins',
+
+  // --- คำศัพท์ทั้งหมดจากหน้า ProfileScreen ---
+  'แต้มบุญสะสม': 'Total Merit Points',
+  'ไปสู่ฉายา “': 'To title “',
+  '”': '”',
+  'แตง': 'Points',
+  'อีก ': 'Another ',
+  ' แต้ม จะได้ฉายาใหม่': ' points to new title',
+  'คุณถึงระดับสูงสุดแล้ว สาธุ!': 'You have reached the maximum level. Sadhu!',
+  'แก้ไขโปรไฟล์': 'Edit Profile',
+  'ข้อมูลส่วนตัว': 'Personal Information',
+  'วันเกิด': 'Birth Date',
+  'เพศ': 'Gender',
+  'สัญชาติ': 'Nationality',
+  'ไทย': 'Thai',
+  'ข้อมูลติดต่อ': 'Contact Information',
+  'เบอร์โทร': 'Phone Number',
+  'ที่อยู่': 'Address',
+  'เมนู': 'Menu',
+  'ประวัติการบริจาค': 'Donation History',
+  'เพื่อน & คำขอ': 'Friends & Requests',
+  'สรุปบุญประจำเดือน': 'Monthly Merit Summary',
+  'ชื่อผู้ใช้': 'Username',
+  'บันทึก': 'Save',
+  'ต้องการสิทธิ์': 'Permission Required',
+  'กรุณาอนุญาตให้เข้าถึงคลังรูปภาพ': 'Please allow access to your photo library',
+  'อัปโหลดรูปภาพเรียบร้อยแล้ว': 'Image uploaded successfully',
+  'ไม่สามารถอัปโหลดรูปภาพได้': 'Unable to upload image',
+  'แก้ไขโปรไฟล์เรียบร้อยแล้ว': 'Profile updated successfully',
+  'คุณต้องการออกจากระบบใช่หรือไม่?': 'Are you sure you want to log out?',
+  'ออกจากระบบไม่สำเร็จ': 'Failed to log out',
+
+  // --- คำศัพท์จากหน้า CreateTripScreen ---
+  'สร้างทริปไหว้พระเอง': 'Create Custom Merit Trip',
+  'ชื่อทริปบุญของคุณ': 'Your Merit Trip Name',
+  'เลือกวัดเข้าทริป': 'Select Temples for Trip',
+  'บันทึกและสร้างทริป': 'Save and Create Trip',
+  'คุณสามารถเลือกวัดสูงสุดได้ 9 วัดต่อทริปครับ': 'You can select up to 9 temples per trip',
+  'กรุณาตั้งชื่อทริปของคุณก่อน': 'Please enter a trip name first',
+  'กรุณาเลือกวัดอย่างน้อย 1 แห่งเข้าสู่ทริป': 'Please select at least 1 temple',
+  'กรุณาเข้าสู่ระบบก่อนสร้างทริป': 'Please log in before creating a trip',
+  'สร้างทริปสายบุญของคุณเรียบร้อยแล้ว!': 'Merit trip created successfully!',
+  'ไม่สามารถบันทึกทริปได้': 'Unable to save trip',
+
+  // --- คำศัพท์จากหน้า DailyMeritScreen ---
+  'กำลังโหลดบุญประจำวัน...': 'Loading daily merit...',
+  'บุญประจำวัน': 'Daily Merit',
+  'วันติดต่อกัน': 'consecutive days',
+  'คะแนนรวม': 'Total points',
+  'ระดับ': 'Level',
+  'บันทึกใจวันนี้': 'Daily Heart Journal',
+  'เขียนสั้น ๆ แล้วให้ AI เป็นเพื่อนตอบกลับ': 'Write short notes and let AI reply',
+  '7 วันล่าสุด': 'Last 7 Days',
+  'วันนี้ทำบุญอะไรดี': 'What merit to make today?',
+  'สวดมนต์': 'Chanting',
+  'ให้ทาน': 'Donation',
+  'ถือศีล': 'Precepts',
+  'แผ่เมตตา': 'Metta',
+  'ไปวัด': 'Temple Visit',
+  'บันทึกบุญวันนี้': 'Today Merit Log',
+  'ยังไม่บันทึกบุญวันนี้': 'No merit recorded today',
+  'เริ่มจากอย่างน้อย 1 อย่างก็ได้': 'Start with at least one',
+  'เหรียญตรา': 'Badges',
+  'เริ่มต้นบุญ': 'Merit Beginner',
+  'เช็คอิน 3 วันติด': 'Check-in 3 days streak',
+  'สัปดาห์แห่งสติ': 'Week of Mindfulness',
+  'เช็คอิน 7 วันติด': 'Check-in 7 days streak',
+  'เดือนแห่งเมตตา': 'Month of Compassion',
+  'เช็คอิน 30 วันติด': 'Check-in 30 days streak',
+  'ผู้สั่งสมบุญ': 'Merit Collector',
+  'คะแนนรวม 30+': 'Total score 30+',
+
+  // --- คำศัพท์จากหน้า DonationScreen ---
+  'ยอดระดมทุน (ที่อนุมัติแล้ว)': 'Fundraising Total (Approved)',
+  'ประเภทการบริจาค': 'Donation Type',
+  'บริจาคธรรมดา': 'General Donation',
+  'ได้บุญ + ใบอนุโมทนา': 'Earn merit + Certificate',
+  'ลดหย่อนภาษี': 'Tax Deduction',
+  'ระบบ e-Donation (จำลองเหมือนจริง)': 'e-Donation System (Simulation)',
+  'ชื่อผู้บริจาค': 'Donor Name',
+  'เลขประจำตัวผู้เสียภาษีอากร': 'Tax Identification Number',
+  'อีเมลสำหรับรับหลักฐาน (ไม่บังคับ)': 'Email for Receipt (Optional)',
+  'เบอร์โทรศัพท์ (ไม่บังคับ)': 'Phone Number (Optional)',
+  'เลือกจำนวนเงิน': 'Select Amount',
+  'หรือกรอกจำนวนเอง': 'Or enter custom amount',
+  'วิธีชำระเงิน': 'Payment Method',
+  'แนบสลิปการโอน': 'Attach Transfer Slip',
+  'แตะเพื่อเลือกสลิป': 'Tap to select slip',
+  'รองรับ JPG, PNG': 'Supports JPG, PNG',
+  'เปลี่ยนสลิป': 'Change Slip',
+  'ยอดจะขึ้นหลังเจ้าหน้าที่ตรวจสอบสลิปและอนุมัติแล้วเท่านั้น': 'Amount will update after admin verification',
+  'ปิดหน้าต่างนี้': 'Close Window',
+  'แนบสลิปก่อนส่ง': 'Attach slip before sending',
+
+  // --- คำศัพท์จากหน้า FocusScreen ---
+
+  'ตั้งใจสงบสักครู่': 'Take a Moment to Calm',
+  'เลือกเวลา แล้วเริ่มหายใจช้า ๆ': 'Select time and start breathing slowly',
+  'เริ่มโหมดสงบ': 'Start Focus Mode',
+  'หยุด': 'Stop',
+  'อนุโมทนา': 'Sadhu',
+  'คุณใช้เวลาสงบ ': 'You spent ',
+  ' นาที\nบันทึกเป็นบุญประจำวันแล้ว': ' mins in calm.\nRecorded as daily merit.',
+  'เขียนบันทึกสั้น': 'Write Short Journal',
+  'เริ่มอีกครั้ง': 'Start Again',
+  'กลับ': 'Back',
+  'หายใจเข้าช้า ๆ': 'Breathe in slowly',
+  'หายใจออกยาว ๆ': 'Breathe out deeply',
+  'วางใจไว้ที่ลมหายใจ': 'Focus your mind on your breath',
+  'คิดผ่านไปได้ ปล่อยวาง': 'Let thoughts pass and let go',
+  'ใจสงบ กายเบา': 'Calm mind, light body',
+
+  // --- คำศัพท์จากหน้า FortuneTellingScreen ---
+  'ดูดวง & เซียมซี': 'Horoscope & Fortune Sticks',
+  'คำทำนาย · เลขมงคล · ทิศเสริมดวง': 'Predictions · Lucky Numbers · Auspicious Directions',
+  'วันนี้': 'Today',
+  'ดวงชะตาของคุณ': 'Your Horoscope',
+  'เปิดคำทำนาย เสี่ยงเซียมซี เสริมโชคลาภ': 'Get predictions, draw fortune sticks, enhance fortune',
+  'ดูดวงรายละเอียด': 'View Horoscope Details',
+  'ดวงรายวัน': 'Daily Horoscope',
+  'สีเสื้อมงคล': 'Lucky Shirt Color',
+  'สีเสริมดวงวันนี้': 'Colors to boost your luck today',
+  'ฤกษ์เดินทาง': 'Travel Auspicious Time',
+  'เวลาสตาร์ทรถมงคล': 'Auspicious car starting time',
+  'เลขนำโชค': 'Lucky Numbers',
+  'เลขเด่น · ป้ายทะเบียน': 'Main numbers · License plate',
+  'ทิศมงคล': 'Auspicious Direction',
+  'โต๊ะทำงาน · ขอพร': 'Workspace · Praying direction',
+  'เลขมงคลประจำวัน': 'Daily Lucky Numbers',
+  'เลขเด่น': 'Main Numbers',
+  'เลขเสริม': 'Sub Numbers',
+  'เสี่ยงเซียมซี': 'Draw Fortune Sticks',
+  'วัดศาลาลอย · ตั้งจิตอธิษฐานก่อนเขย่า': 'Wat Sala Loi · Make a wish before shaking',
+  'กำลังอธิษฐาน... กรุณารอสักครู่': 'Praying... Please wait a moment',
+  'แตะเพื่อเขย่าเซียมซี': 'Tap to shake fortune sticks',
+  'ภาพรวม': 'Overview',
+  'ความรัก': 'Love',
+  'การเงิน & โชคลาภ': 'Finance & Fortune',
+  'การงาน & การเรียน': 'Career & Studies',
+  'สีมงคลเสริมดวง · ': 'Lucky color to boost luck · ',
+  'ปิด': 'Close',
+
+  // --- คำศัพท์จากหน้า DonationHistoryScreen ---
+  'ทั้งหมด': 'All',
+  'เดือนนี้': 'This Month',
+  '6 เดือน': '6 Months',
+  'ปีนี้': 'This Year',
+  'กำลังโหลดข้อมูล...': 'Loading data...',
+  'ไม่มีประวัติการบริจาค': 'No Donation History',
+  'ขอบคุณที่ร่วมทำบุญกับเรา': 'Thank you for making merit with us',
+  'รอตรวจสลิป': 'Pending Slip Review',
+  'ไม่ผ่าน': 'Rejected',
+  'ผู้บริจาค: ': 'Donor: ',
+  '📄 e-Donation · กดเพื่อขอใบอนุโมทนา': '📄 e-Donation · Tap for receipt',
+  '🟢 e-Donation · รอตรวจสอบในระบบ': '🟢 e-Donation · Pending system review',
+  '📄 กดเพื่อขอใบอนุโมทนาบัตร': '📄 Tap to request receipt',
+  '⏳ รอตรวจสลิป — ยังออกใบอนุโมทนาไม่ได้': '⏳ Pending slip review — receipt not available yet',
+  '🚫 ไม่สามารถออกใบอนุโมทนาบัตรได้': '🚫 Unable to issue receipt',
+
+  // --- คำศัพท์จากหน้า HoroscopeScreen ---
+  'ดูดวง': 'Horoscope',
+  'ราศี': 'Zodiac',
+  'โหรไทย': 'Thai Astrology',
+  'ทาโร่': 'Tarot',
+  'ยิปซี': 'Gypsy',
+  'เลือกราศีของคุณ': 'Select Your Zodiac',
+  'ดูดวงราศี': 'Zodiac Reading',
+  'สีมงคล': 'Lucky Color',
+  'ข้อแนะนำ': 'Advice',
+  'วันเดือนปีเกิด': 'Date of Birth',
+  'ดูดวงโหรไทย': 'Thai Astrology Reading',
+  'ธาตุ': 'Element',
+  'นักษัตร': 'Zodiac Sign',
+  'ปีนักษัตร': 'Chinese Zodiac',
+  'สับไพ่': 'Shuffle',
+  'ตัดไพ่': 'Cut Deck',
+  'ทำนาย': 'Predict',
+  'กลับหัว': 'Reversed',
+  'ความหมาย': 'Meaning',
+  'คำทำนาย': 'Prediction',
+  'จั่วใหม่': 'Draw Again',
+  'เลือกวันเดือนปีเกิด': 'Select Date of Birth',
+  'ยืนยัน': 'Confirm',
+  'สับไพ่แล้ว': 'Deck shuffled',
+  'ตัดไพ่แล้ว': 'Deck cut',
+
+  // --- คำศัพท์จากหน้า JournalScreen ---
+  'บันทึกใจสั้น ๆ': 'Short Heart Journal',
+  'วันนี้ใจเป็นอย่างไร': 'How is your heart today?',
+  'อารมณ์ (ไม่บังคับ)': 'Mood (Optional)',
+  'สดใส': 'Bright',
+  'หนักใจ': 'Troubled',
+  'ซาบซึ้ง': 'Grateful',
+  'บันทึก + ให้ AI ตอบ': 'Save + Get AI Reply',
+  'บันทึกล่าสุด': 'Recent Journals',
+  'ยังไม่มีบันทึก': 'No Journals Yet',
+  'ลองเขียนสั้น ๆ 1–2 ประโยคเกี่ยวกับวันนี้': 'Try writing 1-2 sentences about today',
+  'AI เพื่อนธรรม': 'AI Dharma Friend',
+  'กำลังรอคำตอบจาก AI...': 'Waiting for AI reply...',
+
+  // --- คำศัพท์จากหน้า LiveDonationWall ---
+  'ยอดบริจาคทั้งหมด': 'Total Donations',
+  'LIVE': 'LIVE',
+  'ผู้ร่วมบุญล่าสุด': 'Recent Donors',
+  'ยังไม่มีผู้ร่วมบุญ': 'No donors yet',
+  'ออกจากโหมดเต็มจอ': 'Exit Fullscreen',
+
+  // --- คำศัพท์จากหน้า LoyKrathongScreen ---
+  'ลอยกระทง': 'Loy Krathong',
+  'วันลอยกระทง': 'Loy Krathong Day',
+  'วัน': 'Days',
+  'ชั่วโมง': 'Hours',
+  'กิจกรรมลอยกระทง': 'Loy Krathong Activities',
+  'ลอยกระทงออนไลน์': 'Online Loy Krathong',
+  'ลอยกระทงเสมือนจริง': 'Virtual floating krathong',
+  'ฟรี': 'Free',
+  'เริ่มลอย': 'Start Floating',
+  'ทำบุญวันลอยกระทง': 'Loy Krathong Merit',
+  'บริจาคออนไลน์ได้ทันที': 'Donate online instantly',
+  'เริ่มต้น 20 บ.': 'Starts at 20 THB',
+  'ร่วมเป็นเจ้าภาพจัดงานลอยกระทง': 'Host Loy Krathong Event',
+  'ร่วมสนับสนุนงานลอยกระทงของวัดประจำชุมชน\nทำบุญออนไลน์ได้ทันที': 'Support community temple Loy Krathong event\nDonate online instantly',
+  'บริจาคตอนนี้': 'Donate Now',
+  'ปลอดภัย 100%\nระบบโอนเงินปลอดภัย': '100% Safe\nSecure transfer system',
+  'รับใบอนุโมทนา\nสามารถขอใบเสร็จ': 'Receive Receipt\nRequest tax receipt',
+  'โปร่งใส ตรวจสอบได้\nทุกการบริจาคตรวจสอบได้': 'Transparent & Verifiable\nAll donations trackable',
+  'บริจาคเพื่อจัดงานลอยกระทง': 'Donate for Loy Krathong Event',
+  'กำหนดจำนวนเงินเอง': 'Custom Amount',
+  'สร้าง QR พร้อมเพย์ ': 'Generate PromptPay QR ',
+  ' บาท': ' THB',
+  'สแกน QR เพื่อชำระเงิน': 'Scan QR to Pay',
+  'กำลังสร้าง QR...': 'Generating QR...',
+  'เปิดแอปธนาคารของคุณ → สแกน QR → ชำระเงิน': 'Open banking app → Scan QR → Pay',
+  'อัปโหลดสลิปการโอนเงิน': 'Upload Transfer Slip',
+  'ยืนยันการบริจาค': 'Confirm Donation',
+  'หลังจากโอนเงินแล้ว กรุณาอัปโหลดสลิปเพื่อให้ทีมงานตรวจสอบ\nจะได้รับใบอนุโมทนาหลังจากอนุมัติ': 'After transferring, please upload the slip for verification.\nReceipt will be issued upon approval.',
+
+  // --- คำศัพท์จากหน้า MapScreen ---
+  'ใกล้ฉัน': 'Nearby',
+  'ตำแหน่งฉัน': 'My Location',
+  'ดูทั้งหมด': 'View All',
+  'กำลังโหลดรูป...': 'Loading image...',
+  'ขับรถ': 'Driving',
+  'เดิน': 'Walking',
+  'เริ่มนำทาง': 'Start Navigation',
+  'รีวิว': 'Reviews',
+  'เวลาเปิด-ปิด': 'Opening Hours',
+
+  // --- คำศัพท์จากหน้า MeritReportScreen ---
+  'กำลังรวบรวมผลบุญประจำเดือน...': 'Gathering monthly merit report...',
+  'MONTHLY INSIGHTS': 'MONTHLY INSIGHTS',
+  'แต้มบุญสะสมเดือนนี้': 'Total Merit Points This Month',
+  'วันที่ทำบุญ': 'Days of Merit',
+  'กิจเด่นประจำเดือน': 'Top Merit Activity',
+  'ยอดทำบุญร่วมบริจาค': 'Total Donation Amount',
+  'ความต่อเนื่อง (Streak)': 'Consistency (Streak)',
+  'สถิติการสั่งสมความดี': 'Merit Accumulation Stats',
+  'ยังไม่มีบันทึกบุญในเดือนนี้ เริ่มต้นทำความดีกันเลย!': 'No merit records this month. Let us start doing good deeds!',
+  'ทำกิจกรรมนี้อย่างต่อเนื่อง': 'Performed this activity consistently',
+  '"การสะสมบุญทีละน้อย เปรียบเสมือนหยาดน้ำที่ตุ่มเต็มทีละหยด ย่อมเต็มได้ด้วยความเพียร"': '"Accumulating merit little by little is like water drops filling a jar. It fills up through perseverance."',
+  'แชร์ความสุข & ผลบุญนี้': 'Share Happiness & Merit',
+
+  // --- คำศัพท์จากหน้า MeritScreen ---
+  'ทำบุญ & สักการะ': 'Make Merit & Worship',
+  'เสริมดวงชะตา สร้างบุญกุศลออนไลน์': 'Enhance fortune, make merit online',
+  'ประวัติ': 'History',
+  'กิจกรรมพิเศษ': 'Special Activities',
+  'ทำได้ทันที': 'Available Now',
+  'ยอดฮิต': 'Popular',
+  'จุดธูปเทียนบูชาพระออนไลน์': 'Online Incense & Candle Worship',
+  'ตั้งจิตอธิษฐาน สักการะได้ทุกที่ทุกเวลา': 'Set your intention and worship anywhere anytime',
+  'เทศกาลพิเศษ • 2569': 'Special Festival • 2026',
+  'ลอยกระทงออนไลน์ & ทำบุญ': 'Online Loy Krathong & Merit',
+  'นับถอยหลัง · บริจาค · ลอยเสมือนจริง': 'Countdown · Donate · Virtual Floating',
+  'โครงการบริจาค': 'Donation Projects',
+  'ระดมทุนช่วยเหลือ': 'Fundraising Support',
+  'กำลังโหลดโครงการ...': 'Loading projects...',
+  'ยังไม่มีโครงการบริจาคในขณะนี้': 'No donation projects at the moment',
+  'ผู้ร่วมบุญร่วมใจ': 'donors',
+  'ร่วมบุญ & บริจาค': 'Donate & Support',
+  'สนับสนุนกิจกรรม': 'Support activities',
+  'กำลังโหลดข้อมูลบุญ...': 'Loading merit data...',
+  'ยังไม่มีรายการบริจาคในขณะนี้': 'No donation items at the moment',
+  'เสริมดวง': 'Fortune Enhancement',
+  'ดูดวงรายวัน & เซียมซีออนไลน์': 'Daily Horoscope & Online Fortune Sticks',
+  'สายมู': 'Amulet & Fortune',
+  'ตรวจสอบคำขอสร้างกิจกรรมและสถานะอนุมัติ': 'Check activity creation requests and approval status',
+
+  // --- คำศัพท์จากหน้า MessagesScreen ---
+  'ข้อความ / แจ้งเตือน': 'Messages / Notifications',
+  'อ่านทั้งหมด': 'Mark all as read',
+  'ยังไม่มีแจ้งเตือน': 'No Notifications',
+  'เมื่อมีการตั้งเตือนหรือมีข้อความใหม่ จะแสดงที่นี่': 'Reminders or new messages will appear here',
+
+  // --- คำศัพท์จากหน้า MyTripsScreen ---
+  '🗺️ ทริปบุญของฉัน': '🗺️ My Merit Trips',
+  'กำลังโหลดทริปของคุณ...': 'Loading your trips...',
+  'ยังไม่มีทริปบุญที่คุณสร้างขึ้น': 'No merit trips created yet',
+  'ชมทริปแรกเลย': '+ Create First Trip',
+  'วัด': 'Temples',
+  'เส้นทางสายบุญ': 'Merit Journey Route',
+  'นำทาง': 'Navigate',
+  'ปิดหน้าต่าง': 'Close Window',
+
+  // --- คำศัพท์จากหน้า ReviewsScreen ---
+  'รีวิวทั้งหมด': 'All Reviews',
+  'สูงสุด': 'Highest',
+  'ต่ำสุด': 'Lowest',
+  'ยังไม่มีรีวิวสำหรับรายการนี้': 'No reviews for this item yet',
+  'เขียนรีวิว': 'Write a Review',
+
+  // --- คำศัพท์จากหน้า TempleDetailScreen ---
+
+  'พิกัด': 'Coordinates',
+  'เกี่ยวกับวัด': 'About Temple',
+  'ยังไม่มีคำอธิบายจากวิกิพีเดียสำหรับวัดนี้\nคุณสามารถเปิดแผนที่เพื่อเดินทางไปสักการะได้': 'No Wikipedia description available for this temple.\nYou can open the map to visit and worship.',
+  'ทำบุญต่อที่นี่': 'Make Merit Here',
+  'แผนที่': 'Map',
+  'นำทางไปวัดนี้': 'Navigate to This Temple',
+};
+
+export default function AppText({ children, noTranslate, ...rest }: Props) {
+  const { lang } = useLang();
+  const isPlain =
+    typeof children === 'string' || typeof children === 'number';
+  const source = isPlain ? String(children).trim() : '';
+
+  const [display, setDisplay] = useState(source);
+
+  useEffect(() => {
+    let alive = true;
+
+    // ถ้าเป็นภาษาไทย หรือห้ามแปล ให้ใช้ต้นฉบับ
+    if (!isPlain || noTranslate || lang === 'th') {
+      setDisplay(source);
+      return;
+    }
+
+    // ถ้าเป็นภาษาอังกฤษ ให้เช็คจากพจนานุกรมก่อน ถ้ามีใช้คำนั้นทันที
+    if (lang === 'en' && uiDictionary[source]) {
+      setDisplay(uiDictionary[source]);
+      return;
+    }
+
+    // ถ้าไม่มีในพจนานุกรม ค่อยเรียก API แปล
+    (async () => {
+      try {
+        const result = await translateText(source, 'en');
+        if (alive) setDisplay(result || source);
+      } catch {
+        if (alive) setDisplay(source);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [source, lang, noTranslate, isPlain]);
+
+  if (!isPlain) {
+    return <Text {...rest}>{children}</Text>;
+  }
+
+  return <Text {...rest}>{display}</Text>;
+}

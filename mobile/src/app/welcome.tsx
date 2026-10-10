@@ -3,8 +3,8 @@ import { StyleSheet, View, Animated, Dimensions, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
-// คำที่จะให้แสดงสลับกันตามลำดับ
-const WORDS = ['สวัสดี', 'สาธุ', 'ยินดีต้อนรับ'];
+// คำที่จะให้แสดงสลับกันตามลำดับ (ตามภาพ)
+const WORDS = ['Hello :)', 'Welcome to', 'Sathu'];
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -40,7 +40,7 @@ export default function WelcomeScreen() {
 
       // เสร็จสิ้นการแสดงคำทั้งหมด เด้งไปหน้าหลัก
       setTimeout(() => {
-        router.replace('/home');
+  router.replace('/select-location' as any);
       }, 1000);
     };
 
@@ -50,11 +50,6 @@ export default function WelcomeScreen() {
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      
-      {/* 
-        หมายเหตุ: ถ้าต้องการให้เห็นรูปพื้นหลังดอกบัวในหน้าโหลดนี้ 
-        สามารถใส่ ImageBackground ครอบ View นี้ได้ครับ
-      */}
       
       <View style={styles.contentContainer}>
         <Animated.Text style={[styles.welcomeText, { opacity: fadeAnim }]}>
@@ -68,7 +63,7 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#8DB683' // สีเขียวโทนสงบ
+    backgroundColor: '#0A1428' // สีน้ำเงินเข้มตามภาพ
   },
   contentContainer: {
     flex: 1,
@@ -76,12 +71,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   welcomeText: {
-    fontSize: 50,
+    fontSize: 52,
     color: '#FFFFFF',
-    fontWeight: '400',
-    textShadowColor: 'rgba(0, 0, 0, 0.15)',
-    textShadowOffset: { width: 1, height: 2 },
-    textShadowRadius: 10,
-    fontFamily: Platform.OS === 'ios' ? 'Thonburi' : 'sans-serif',
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: -1,
+    textShadowColor: 'rgba(255, 107, 203, 0.4)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 20,
+    ...Platform.select({
+      ios: { fontFamily: 'System' },
+      android: { fontFamily: 'sans-serif-medium' },
+    }),
   },
 });
